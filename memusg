@@ -32,7 +32,7 @@ if pid != pgid:
 
 log("Starting child: {}".format(child_command))
 # "None" means "inherit from parent"
-proc = Popen(child_command, stdin=None, stdout=None, stderr=None, shell=True)
+proc = Popen(child_command, stdin=None, stdout=None, stderr=None, env=None, shell=True)
 
 vmpeak = -1
 while proc.returncode == None:
