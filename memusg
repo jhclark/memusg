@@ -1,0 +1,48 @@
+#!/usr/bin/env python
+import sys
+import os
+from time import sleep
+from subprocess import *
+
+# child_command should be a single argument as if to "/bin/sh -c 'child_command'"
+# when shell=True is enabled
+child_command = ' '.join(sys.argv[1:])
+
+DEBUG = False
+def log(msg):
+    if DEBUG:
+        print >>sys.stderr, "memusg: {}".format(msg)
+
+def get_vmpeak(pid):
+    vmpeak = -1
+    with open("/proc/{}/status".format(pid)) as f:
+        for line in f:
+            if line.startswith("VmPeak:"):
+                (label, value, unit) = line.strip().split()
+                vmpeak = int(value)
+    return vmpeak
+
+# Create a new process group / session for this process.
+pid = os.getpid()
+pgid = os.getpgid(pid)
+log("PID is {} ; PGID is {}".format(pid, pgid))
+if pid != pgid:
+    log("Trying to split off our own process group".format(pid, pgid))
+    os.setpgrp()
+
+log("Starting child: {}".format(child_command))
+# "None" means "inherit from parent"
+proc = Popen(child_command, stdin=None, stdout=None, stderr=None, shell=True)
+
+vmpeak = -1
+while proc.returncode == None:
+    vmpeak = max(get_vmpeak(proc.pid), vmpeak)
+    log("Waiting for child to exit. vmpeak={}".format(vmpeak))
+    proc.poll()
+    sleep(0.5) # Time in seconds (float)
+    
+print >>sys.stderr, "memusg: vmpeak: {} kb".format(vmpeak)
+
+status = proc.returncode
+log("Child process returned {}".format(status))
+sys.exit(status)
