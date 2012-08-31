@@ -1,5 +1,7 @@
 A 'time'-like utility for Unix that measures peak memory usage.
 
+WARNING: This script is still under testing and tends to behave badly outside of interactive terminals.
+
 Usage:
 
 ```bash
