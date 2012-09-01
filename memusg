@@ -9,40 +9,64 @@ from subprocess import *
 child_command = ' '.join(sys.argv[1:])
 
 DEBUG = False
+#DEBUG = True
 def log(msg):
     if DEBUG:
         print >>sys.stderr, "memusg: {}".format(msg)
 
-def get_vmpeak(pid):
-    vmpeak = -1
-    with open("/proc/{}/status".format(pid)) as f:
-        for line in f:
-            if line.startswith("VmPeak:"):
-                (label, value, unit) = line.strip().split()
-                vmpeak = int(value)
-    return vmpeak
+def get_vsize(sid):
+    vsize = 0
+    # Example: /bin/ps -o vsize= --sid 23928
+    proc = Popen(['ps', '-o', 'vsize=', '--sid', str(sid)], stdout=PIPE, stderr=None, shell=False)
+    (stdout, _stderr) = proc.communicate()
+    # Iterate over each process within the process tree of our process session
+    # (this ensures that we include processes launched by a child bash script, etc.)
+    for line in stdout.split():
+        vsize += int(line.strip())
+    return vsize
 
-# Create a new process group / session for this process.
+# Create a new process session for this process so that we can
+# easily calculate the memory usage of the whole process tree using ps
+#
+# Since we need a new session using os.setsid(), we must first fork()
 pid = os.getpid()
+sid = os.getsid(pid)
 pgid = os.getpgid(pid)
-log("PID is {} ; PGID is {}".format(pid, pgid))
-if pid != pgid:
-    log("Trying to split off our own process group".format(pid, pgid))
-    os.setpgrp()
+log("Pre-fork: PID is {} ; PGID is {} ; SID is {}".format(pid, pgid, sid))
 
-log("Starting child: {}".format(child_command))
-# "None" means "inherit from parent"
-proc = Popen(child_command, stdin=None, stdout=None, stderr=None, env=None, shell=True)
+fork_pid = os.fork()
+if fork_pid == 0:
+    # We *are* the new fork (not the original process)
+    pid = os.getpid()
+    sid = os.getsid(pid)
+    pgid = os.getpgid(pid)
+    log("Post-fork: PID is {} ; PGID is {} ; SID is {}".format(pid, pgid, sid))
 
-vmpeak = -1
-while proc.returncode == None:
-    vmpeak = max(get_vmpeak(proc.pid), vmpeak)
-    log("Waiting for child to exit. vmpeak={}".format(vmpeak))
-    proc.poll()
-    sleep(0.5) # Time in seconds (float)
+    log("Trying to init our own session".format(pid, pgid))
+    os.setsid()
+    sid = os.getsid(pid)
+    pgid = os.getpgid(pid)
+    log("Post-session init: PID is {} ; PGID is {} ; SID is {}".format(pid, pgid, sid))
+        
+    log("Starting child: {}".format(child_command))
+    # "None" means "inherit from parent"
+    proc = Popen(child_command, stdin=None, stdout=None, stderr=None, env=None, shell=True)
+
+    vmpeak = -1
+    while proc.returncode == None:
+        vmpeak = max(get_vsize(sid), vmpeak)
+        log("Waiting for child to exit. vmpeak={}".format(vmpeak))
+        proc.poll()
+        sleep(0.1) # Time in seconds (float)
     
-print >>sys.stderr, "memusg: vmpeak: {} kb".format(vmpeak)
+    print >>sys.stderr, "memusg: vmpeak: {} kb".format(vmpeak)
 
-status = proc.returncode
-log("Child process returned {}".format(status))
-sys.exit(status)
+    status = proc.returncode
+    log("Child process returned {}".format(status))
+    sys.exit(status)
+
+else:
+    # This is the branch of fork that continues the original process
+    (_fork_pid, status) = os.waitpid(fork_pid, 0)
+    log("Fork returned {}".format(status))
+    sys.exit(status)
