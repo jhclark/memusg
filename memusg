@@ -84,7 +84,8 @@ if fork_pid == 0:
 
 else:
     # This is the branch of fork that continues the original process
-    (_fork_pid, status) = os.waitpid(fork_pid, 0)
+    (_fork_pid, full_status) = os.waitpid(fork_pid, 0)
+    status = full_status >> 8
     log("Fork returned {}".format(status))
     out.close()
     sys.exit(status)
