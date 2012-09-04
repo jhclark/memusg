@@ -4,12 +4,29 @@ import os
 from time import sleep
 from subprocess import *
 
+# -o file.txt : output information to a file rather than stderr
+# -d          : debug mode
+
+
+out = sys.stderr
+DEBUG = False
+
+child_args = []
+i = 1
+while i < len(sys.argv):
+    if sys.argv[i] == '-o':
+        i += 1
+        out = open(sys.argv[i], 'w')
+    elif sys.argv[i] == '-d':
+        DEBUG = True
+    else:
+        child_args.append(sys.argv[i])
+    i += 1
+
 # child_command should be a single argument as if to "/bin/sh -c 'child_command'"
 # when shell=True is enabled
-child_command = ' '.join(sys.argv[1:])
+child_command = ' '.join(child_args)
 
-DEBUG = False
-#DEBUG = True
 def log(msg):
     if DEBUG:
         print >>sys.stderr, "memusg: {}".format(msg)
@@ -59,7 +76,7 @@ if fork_pid == 0:
         proc.poll()
         sleep(0.1) # Time in seconds (float)
     
-    print >>sys.stderr, "memusg: vmpeak: {} kb".format(vmpeak)
+    out.write("memusg: vmpeak: {} kb\n".format(vmpeak))
 
     status = proc.returncode
     log("Child process returned {}".format(status))
@@ -69,4 +86,5 @@ else:
     # This is the branch of fork that continues the original process
     (_fork_pid, status) = os.waitpid(fork_pid, 0)
     log("Fork returned {}".format(status))
+    out.close()
     sys.exit(status)
